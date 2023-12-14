@@ -1,0 +1,816 @@
+---
+title: "ISA 401 Project"
+author: "Alex Afnan"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+   code_folding: show
+   echo: FALSE
+   code_download: TRUE
+   toc: TRUE
+   toc_float: TRUE
+   number_sections: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Set a CRAN mirror
+options(repos = c(CRAN = "https://cran.r-project.org"))
+
+# Load the required libraries
+library(dplyr)
+library(tidyverse)
+
+```
+# Project Goal
+## Purpose:
+
+To analyze the changes in the NFL over time and the impact of the shifting game on those who play it. In particular how have changes to the way the game is played led to particular evolution in strategy for franchises and the benefits this has posed to the league over all? For the purpose of this project I have data collected from various sources covering the range of years from 1920 through 2022.
+
+## Why try to analyze this problem?
+
+The NFL has changed a lot since its inception. The thing I was most intrigued by, was the way my father and his friends talked about the game and while they were still talking about football they emphasized how different it was. I wanted to really see if one generation had changed the game so dramatically. I also wanted to look at the League as a whole and understand why it chose to change the game in the ways it did through out the years and what that meant to the players, and the league as a whole. 
+
+The other big thing I wanted to gain was an understanding of the league’s history not just a single franchise. By analyzing how the game has changed and understanding the business that it represents I thought I could achieve this, or at the very least begin to scratch the surface.
+
+#*Sources:*
+
+For use in identifying peak viewership and its changes over the years
+https://www.sportsmediawatch.com/super-bowl-ratings-historical-viewership-chart-cbs-nbc-fox-abc/
+
+For use in identifying the changes to the game and key points in time that lead to trend shifts
+https://www.sportsattic.com/araig/NflRulesHistory.htm
+https://operations.nfl.com/the-rules/nfl-video-rulebook/defenseless-player/
+
+For use in gathering data on historical games and offensive playstyle (1970-2022)
+https://www.nfl.com/stats/team-stats/offense/passing/1970/reg/all 
+
+For use in understanding players at the inception of the NFL
+https://operations.nfl.com/inside-football-ops/players-legends/evolution-of-the-nfl-player/ 
+
+For use in understanding Running back mentality on pay
+https://deadspin.com/nick-chubb-on-rb-pay-theres-really-nothing-we-can-do-1850668575 
+
+
+#Install packages if needed
+```{r Libraries}
+# install.packages("tidyverse")
+# install.packages("zoo")
+library(tidyverse)
+library(zoo)
+library(readr)
+library(tidyr)
+```
+
+# *Read data derived from pro-football-reference.com*
+```{r Career Data Read}
+careers <- read_csv('nfl-players.csv')
+head(careers)
+
+
+## Adjust the data taking into account those who played for multiple positions by splitting 
+## these cases into separate rows for each position listed
+
+# Continue with your data manipulation
+allpositions <- careers %>% 
+  select(name, srid, active, positions, start, end) %>% 
+  replace_na(list(positions = '')) %>% 
+  mutate(positions = str_replace(positions, ',|/', '-')) %>% 
+  separate_rows(positions, sep = '-')
+
+head(allpositions)
+
+```
+
+# Lets make a graph to see the frequency of positions through league history
+```{r Position Frequency Graph}
+library(ggplot2)
+
+ggplot(data = allpositions, aes(x = start)) +
+  geom_histogram(binwidth = 1, fill = "forestgreen", color = "black", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(min(allpositions$start), max(allpositions$start), by = 10)) +
+  labs(title = "Distribution of Positions Over Years",
+       x = "Start Year",
+       y = "Frequency")
+```
+
+
+
+I am sure the first thing that anyone looking at this graph would notice is that there is a massive jump in players in 1987.This is something I decided to look into.
+
+  Google, Google, in my hand, for the NFL in 1987, give me the lay of the land...
+
+The following is a direct excerpt from Wikipedia: "The 1987 NFL season was the 68th regular season of the National Football League (NFL). This season featured games predominantly played by replacement players, as the National Football League Players Association (NFLPA) players were on strike from weeks four to six with week three being cancelled in its entirety. This remains the last NFL season in which regular-season games were impacted by a labor conflict (as well as the last season when non-union players were used as strike-breaking competitors)."
+
+Meaning that the reason we see so many players this season is due to the NFL Player's Association (NFLPA) Strike. I am going to keep an eye on this year in later data to see if it produces other outliers. 
+
+However I also noticed the surprisingly low count of players in 1929, as we know the great depression struck this year and it clearly had an impact on the league as well. Despite this fact, the league actually picked up some new teams this year
+
+One final baseline observation I had was that there were a surprisingly high number of players in the earliest years of the league. After looking into it, it became clear to me that the NFL now is very different than it was in the earlier years. Those who played during the dawn of the NFL couldn't normally live on their pay. Often times they had other jobs, and would only show up for weekend games, this meant that a large number of players never practiced. At the time the game was struggling for popularity and the games were played by the every-man who loved football for the sake of playing and were being paid most commonly on a per game basis. This meant that for some people, they had to step away from the game though, since they couldn't sustain their lives on it, they left the league, and the league signed new players to take their place. From the looks of the data and historical information it seemed pretty common.
+
+As time went on though, the game grew slowly in popularity, so much so that other leagues were born. Since the NFL was in its infancy, it had not cornered the market on football in the united states, even 29 years after its inception, another league would be born that had the chance to rival it: The AFL. In 1959 the AFL was founded, this league had more passing in it than the NFL from the onset and was growing in popularity for their impact and exciting plays.
+
+After just 7 years, in 1966, the NFL and AFL agreed to a merger, and for three years the leagues shared revenue, however, they still never played against each other, except for a final game between the two league champions which became the world famous Superbowl. In 1970, it happened, the two leagues completely merged and the AFL teams were dubbed the AFC division, and the NFL teams were dubbed the NFC division and the two divisions intermingled games, and the regular season finally became similar to what it is today.
+
+
+Back to the analysis:
+I talked to some people I know are very versed in league history, and they informed me that there were a lot of positions back in the day that probably wouldn't be pertinent to today's league.
+
+#*Checking the distribution of positions*
+```{r All position titles in the Frequency chart}
+allpositions %>% 
+  group_by(start) %>%   # Group the data by the start year
+  count() %>%           # Count the frequency of positions for each start year
+  arrange(desc(n)) %>%   # Arrange the results in descending order based on count
+  head()                # Show the top few rows
+
+
+ggplot(data = allpositions) +
+  geom_bar(mapping = aes(x = start)) +
+  facet_grid(positions ~ .) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+
+That graph is too cluttered to glean much from. However, I can see that there are way more positions than I had expected to see and that some positions were created later on in league history. I need to see what positions are in the data and converge down to an appropriate level.
+
+# Lets make a new graph
+```{r Read the position data}
+# Read the position data
+posfreq <- allpositions %>% 
+  count(positions)
+
+# Save position frequencies to a CSV file
+write_csv(posfreq, 'positions.csv')
+
+```
+
+I took the data from the positions.csv and organized it into a new csv file called simplified_positions. I am going to use this organized data and connect it with my current data while pruning away things that are duplicates. 
+
+# More Data Prep
+```{r Further Data Prep for positions}
+# Read the simplified positions data
+simple_positions <- read_csv('simplified_positions.csv')
+
+# Display the simplified positions data
+knitr::kable(simple_positions %>% arrange(category, desc(n)))
+
+# Join the simplified positions data with the main dataset
+allpositions <- allpositions %>%
+  left_join(simple_positions %>% filter(!is.na(category)) %>% select(positions, category)) %>% 
+  replace_na(list(category = 'other'))
+
+
+```
+
+
+# Lets try the graph again to see if it worked
+```{r}
+ggplot(data = allpositions) +
+  geom_bar(mapping = aes(x = start)) +
+  facet_grid(category ~ .) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+```
+
+
+That is much better. Now we have positions that are more usable as far as analysis and discussion goes. 
+
+Returning to the early years we can see that miscellaneous positions and offensive linemen seemed to be far more frequent than other positions. Likely they were the positions that were paid the least by comparison to other players and often needed replacements as players left the league.
+
+Now I want to filter for complete data. As the data includes retired and active players. I would be skewing my data by including incomplete entries for the active players, so I am going to filter the data to only include the retired players.
+
+# Filter for retired players
+```{r retired players filtration}
+head(allpositions)
+
+summary(allpositions$active)
+summary(allpositions$category)
+
+
+retired_debug <- allpositions %>% filter(active == "False" & category != 'other')
+head(retired_debug)
+
+unique(allpositions$active)
+
+retired_debug <- allpositions %>% filter(tolower(active) == "false" & category != 'other')
+
+retired_debug <- retired_debug %>% mutate(career = (end - start))
+
+
+```
+
+# Find avergae Career Lengths
+```{r Print the Average Career Length}
+# Your code for calculating average career length here
+
+# For example:
+average_career_length <- retired_debug %>%
+  group_by(category) %>%
+  summarise(average_career = mean(career, na.rm = TRUE))
+
+# Print the result
+print(average_career_length)
+
+```
+
+
+I want a graph that will show the average career length for each of these positions for the sake of analysis. So I will calculate the average and plot them on a histogram, grouping by the simplified positions.
+
+# Avergae Career Length Bar Chart by Position
+```{r Average Career Length by simplified positions Bar chart}
+# Plot the bar plot with a single color
+ggplot(data = average_career_length, aes(x = category, y = average_career)) +
+  geom_bar(stat = "identity", color = "black", fill = "forestgreen", alpha = 0.7) +
+  labs(title = "Average Career Length for Retired Players by Position Category",
+       x = "Position Category",
+       y = "Average Career Length") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+
+
+Immediately I notice that the defensive line, tight ends, and quarterbacks have longer than average career lengths, and the running backs have the shortest.
+
+Now lets look into the league's offensive changes through history.
+
+# Reading the data for league trend analysis
+```{r Offense Data Scraping}
+library(rvest)
+library(dplyr)
+
+
+install.packages("dplyr")
+install.packages("tidyverse")
+
+read.csv("NFL Tables.csv")
+
+
+# Create a data frame with the provided data
+your_data <- data.frame(
+  YEAR = 1970:2022,
+  Passing.Table = paste0("https://www.nfl.com/stats/team-stats/offense/passing/", 1970:2022, "/reg/all"),
+  Rushing.Table = paste0("https://www.nfl.com/stats/team-stats/offense/rushing/", 1970:2022, "/reg/all")
+)
+
+# Display the created data frame
+print(your_data)
+
+# Create separate data frames for passing and rushing
+passing_data <- data.frame(YEAR = your_data$YEAR, URL = your_data$Passing.Table)
+rushing_data <- data.frame(YEAR = your_data$YEAR, URL = your_data$Rushing.Table)
+
+# Display the passing and rushing data frames
+print(passing_data)
+print(rushing_data)
+
+
+```
+
+# Scraping Data from each link in each table
+```{r}
+# Install the required packages
+# install.packages("rvest")
+# install.packages("dplyr")
+# install.packages("tidyr")
+
+# Load the packages
+library(rvest)
+library(dplyr)
+library(tidyr)
+
+```
+
+# Function to create a table for each year and type of offense
+```{r Tables for Offense Type}
+# Function to scrape data from a given URL with specific CSS selectors
+scrape_data <- function(url, table_selector) {
+  # Read HTML content from the URL
+  page <- read_html(url)
+  
+  # Extract all tables from the HTML using the specified selector
+  tables <- page %>%
+    html_nodes(table_selector) %>%
+    html_table(fill = TRUE)
+  
+  # Return a list of data frames for each table
+  return(tables)
+}
+
+# Scrape passing data for each year
+passing_data <- your_data %>%
+  rowwise() %>%
+  mutate(passing_tables = list(scrape_data(Passing.Table, ".d3-l-wrap #main-content .d3-l-section-row .d3-l-grid--inner .d3-l-col__col-12 .d3-o-table--horizontal-scroll"))) %>%
+  unnest(passing_tables)
+
+# Scrape rushing data for each year
+rushing_data <- your_data %>%
+  rowwise() %>%
+  mutate(rushing_tables = list(scrape_data(Rushing.Table, ".d3-l-wrap #main-content .d3-l-section-row .d3-l-grid--inner .d3-l-col__col-12 .d3-o-table--horizontal-scroll"))) %>%
+  unnest(rushing_tables)
+
+
+```
+
+
+# Trim data for only the columns I want
+```{r Trimming Tables}
+# Select only the desired columns in each passing table
+passing_data_trimmed <- passing_data %>%
+  mutate(passing_tables_trimmed = lapply(passing_tables, function(table) {
+    select(table, Team, Att, `Pass Yds`, TD)
+  })) %>%
+  select(-passing_tables) %>%
+  unnest(passing_tables_trimmed)
+
+# Remove the Passing.Table and Rushing.Table columns
+passing_data_trimmed <- passing_data_trimmed %>%
+  select(-Passing.Table, -Rushing.Table)
+
+# Display the updated passing data
+print(passing_data_trimmed)
+
+```
+
+# Grouping the data by year
+```{r Grouping}
+# Sum the attempted passes for each year
+pass_attempts_sum <- passing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_Att = sum(Att))
+
+# Display the result
+print(pass_attempts_sum)
+
+
+# Sum the attempted passes for each year
+pass_yards_sum <- passing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_PassYds = sum(`Pass Yds`))
+
+# Display the result
+print(pass_yards_sum)
+
+
+# Sum the attempted passes for each year
+pass_TD_sum <- passing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_Att = sum(TD))
+
+# Display the result
+print(pass_TD_sum)
+```
+
+# Place the three sums for passing information into a table of their own
+```{r Passing Sums Table}
+# Create a new data frame for the sums
+passing_sums <- data.frame(
+  YEAR = pass_attempts_sum$YEAR,  # Assuming all three data frames have the same years
+  Total_Att = pass_attempts_sum$Total_Att,
+  Total_PassYds = pass_yards_sum$Total_PassYds,
+  Total_TD = pass_TD_sum$Total_Att
+)
+
+# Display the resulting table
+print(passing_sums)
+
+```
+
+# Create a plot to visualize the number of passes over time
+```{r Pass Attempts Table}
+# Load the ggplot2 package
+library(ggplot2)
+
+# Create a time series plot
+ggplot(passing_sums, aes(x = YEAR, y = Total_Att)) +
+  geom_line() +
+  labs(title = "Total Attempted Passes per Season Over Time",
+       x = "Year",
+       y = "Total Attempts")
+
+```
+
+
+# Create a plot to visualize the total passing yards over time
+```{r Passing Yards Table}
+# Load the ggplot2 package
+library(ggplot2)
+
+# Create a time series plot for Total_PassYds
+ggplot(passing_sums, aes(x = YEAR, y = Total_PassYds)) +
+  geom_line() +
+  labs(title = "Total Passing Yards Over Time",
+       x = "Year",
+       y = "Total Passing Yards")
+
+```
+
+
+# Create a plot that shows the total touchdowns from passing over time
+```{r Passing Touchdowns Table}
+# Load the ggplot2 package
+library(ggplot2)
+
+# Create a time series plot for Total_TD
+ggplot(passing_sums, aes(x = YEAR, y = Total_TD)) +
+  geom_line() +
+  labs(title = "Total Passing Touchdowns Over Time",
+       x = "Year",
+       y = "Total Touchdowns")
+
+```
+
+# Placing the 3 graphs next to each other
+```{r 3 Passing Tables Side by Side}
+# Load necessary packages
+# install.packages("gridExtra")
+library(ggplot2)
+library(gridExtra)
+
+# Function to calculate and extract slope
+calculate_slope <- function(x, y) {
+  lm_fit <- lm(y ~ x)
+  coef(lm_fit)[[2]]
+}
+
+# Create time series plots for Total_Att, Total_PassYds, and Total_TD
+plot_att <- ggplot(passing_sums, aes(x = YEAR, y = Total_Att)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue", linetype = "dashed") +  # Trendline
+  labs(title = "Total Attempted Passes Over Time",
+       x = "Year",
+       y = "Total Attempts",
+       subtitle = sprintf("Slope: %.2f", calculate_slope(passing_sums$YEAR, passing_sums$Total_Att)))
+
+plot_passyds <- ggplot(passing_sums, aes(x = YEAR, y = Total_PassYds)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, color = "green", linetype = "dashed") +  # Trendline
+  labs(title = "Total Passing Yards Over Time",
+       x = "Year",
+       y = "Total Passing Yards",
+       subtitle = sprintf("Slope: %.2f", calculate_slope(passing_sums$YEAR, passing_sums$Total_PassYds)))
+
+plot_td <- ggplot(passing_sums, aes(x = YEAR, y = Total_TD)) +
+  geom_line() +
+  geom_smooth(method = "lm", se = FALSE, color = "gold", linetype = "dashed") +  # Trendline
+  labs(title = "Total Passing Touchdowns Over Time",
+       x = "Year",
+       y = "Total Touchdowns",
+       subtitle = sprintf("Slope: %.2f", calculate_slope(passing_sums$YEAR, passing_sums$Total_TD)))
+
+# Arrange the plots side by side
+grid.arrange(plot_att, plot_passyds, plot_td, ncol = 1)
+
+```
+
+
+# Trimming the Rushing data
+```{r Trim Rushing data}
+# Select only the desired columns in each rushing table
+rushing_data_trimmed <- rushing_data %>%
+  mutate(rushing_tables_trimmed = lapply(rushing_tables, function(table) {
+    select(table, Team, Att, `Rush Yds`, TD)
+  })) %>%
+  select(-rushing_tables) %>%
+  unnest(rushing_tables_trimmed)
+
+# Remove the Passing.Table and Rushing.Table columns
+rushing_data_trimmed <- rushing_data_trimmed %>%
+  select(-Passing.Table, -Rushing.Table)
+
+# Display the updated rushing data
+print(rushing_data_trimmed)
+
+```
+
+# Group rushing data by year
+```{r Group Rushing Data}
+# Sum the attempted rushes for each year
+rush_attempts_sum <- rushing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_Att = sum(Att))
+
+# Display the result
+print(rush_attempts_sum)
+
+# Sum the rushing yards for each year
+rush_yards_sum <- rushing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_RushYds = sum(`Rush Yds`))
+
+# Display the result
+print(rush_yards_sum)
+
+# Sum the rushing touchdowns for each year
+rush_TD_sum <- rushing_data_trimmed %>%
+  group_by(YEAR) %>%
+  summarize(Total_TD = sum(TD))
+
+# Display the result
+print(rush_TD_sum)
+
+```
+
+
+# Place the sums for rushing together
+```{r Sums for Rushing Table}
+# Create a new data frame for the sums from the rushing data
+rushing_sums <- data.frame(
+  YEAR = rush_attempts_sum$YEAR,  # Assuming all three data frames have the same years
+  Total_Att = rush_attempts_sum$Total_Att,
+  Total_RushYds = rush_yards_sum$Total_RushYds,
+  Total_TD = rush_TD_sum$Total_TD
+)
+
+# Display the resulting table
+print(rushing_sums)
+
+```
+
+
+# Rushing attempts over time plot
+```{r Rushing attempts plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total rushing attempts
+ggplot(rushing_sums, aes(x = YEAR, y = Total_Att)) +
+  geom_line() +
+  labs(title = "Total Rushing Attempts Over Time",
+       x = "Year",
+       y = "Total Rushing Attempts")
+
+```
+
+
+# Rushing yards over time plot
+```{r Rushing yards plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total rushing yards
+ggplot(rushing_sums, aes(x = YEAR, y = Total_RushYds)) +
+  geom_line() +
+  labs(title = "Total Rushing Yards Over Time",
+       x = "Year",
+       y = "Total Rushing Yards")
+
+```
+
+
+# Rushing touchdowns over time
+```{r Rushing touchdowns plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total rushing touchdowns
+ggplot(rushing_sums, aes(x = YEAR, y = Total_TD)) +
+  geom_line() +
+  labs(title = "Total Rushing Touchdowns Over Time",
+       x = "Year",
+       y = "Total Rushing Touchdowns")
+
+```
+
+
+# All 3 rushing tables together
+```{r Rushing plots side by side}
+# Load necessary packages
+library(ggplot2)
+library(gridExtra)
+
+# Create time series plots for Total_Att, Total_RushYds, and Total_TD
+plot_att <- ggplot(rushing_sums, aes(x = YEAR, y = Total_Att)) +
+  geom_line() +
+  labs(title = "Total Rushing Attempts Over Time",
+       x = "Year",
+       y = "Total Attempts")
+
+plot_rushyds <- ggplot(rushing_sums, aes(x = YEAR, y = Total_RushYds)) +
+  geom_line() +
+  labs(title = "Total Rushing Yards Over Time",
+       x = "Year",
+       y = "Total Rushing Yards")
+
+plot_td <- ggplot(rushing_sums, aes(x = YEAR, y = Total_TD)) +
+  geom_line() +
+  labs(title = "Total Rushing Touchdowns Over Time",
+       x = "Year",
+       y = "Total Touchdowns")
+
+# Add trendlines and slopes
+plot_att <- plot_att + geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, 
+           label = paste("Slope:", round(coef(lm(Total_Att ~ YEAR, data = rushing_sums))[2], 2)),
+           fontface = "bold")
+
+plot_rushyds <- plot_rushyds + geom_smooth(method = "lm", se = FALSE, color = "green") +
+  annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, 
+           label = paste("Slope:", round(coef(lm(Total_RushYds ~ YEAR, data = rushing_sums))[2], 2)),
+           fontface = "bold")
+
+plot_td <- plot_td + geom_smooth(method = "lm", se = FALSE, color = "gold") +
+  annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, 
+           label = paste("Slope:", round(coef(lm(Total_TD ~ YEAR, data = rushing_sums))[2], 2)),
+           fontface = "bold")
+
+# Arrange the plots side by side
+grid.arrange(plot_att, plot_rushyds, plot_td, ncol = 1)
+
+```
+
+
+# Passing vs Rushing attempts over time
+
+
+```{r Pass vs Rush Attempts Plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total attempts (rushing and passing)
+ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_Att, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_Att, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Attempts Comparison Over Time",
+       x = "Year",
+       y = "Total Attempts") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+```
+
+
+# Total Yards per Passing vs Rushing over time
+
+
+```{r Pass vs Rush Yards Plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total yards (rushing and passing)
+ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_PassYds, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_RushYds, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Yards Comparison Over Time",
+       x = "Year",
+       y = "Total Yards") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+```
+
+
+# Touchdowns for rushing vs passing over time
+
+
+```{r Pass vs Rush Touchdowns plot}
+# Load necessary packages
+library(ggplot2)
+
+# Create a time series plot for total touchdowns (rushing and passing)
+ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_TD, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_TD, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Touchdowns Comparison Over Time",
+       x = "Year",
+       y = "Total Touchdowns") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+```
+
+
+# All three at once
+
+
+```{r Pass vs Rush all three side by side}
+# Load necessary packages
+library(ggplot2)
+library(gridExtra)
+
+# Create time series plots for Total_Att, Total_PassYds, and Total_TD
+plot_att <- ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_Att, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_Att, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Attempts Comparison Over Time",
+       x = "Year",
+       y = "Total Attempts") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+plot_yds <- ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_PassYds, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_RushYds, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Yards Comparison Over Time",
+       x = "Year",
+       y = "Total Yards") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+plot_td <- ggplot() +
+  geom_line(data = passing_sums, aes(x = YEAR, y = Total_TD, color = "Passing"), size = 1.5) +
+  geom_line(data = rushing_sums, aes(x = YEAR, y = Total_TD, color = "Rushing"), size = 1.5) +
+  labs(title = "Total Touchdowns Comparison Over Time",
+       x = "Year",
+       y = "Total Touchdowns") +
+  scale_color_manual(values = c("Passing" = "blue", "Rushing" = "red")) +
+  theme_minimal()
+
+# Arrange the plots side by side
+grid.arrange(plot_att, plot_yds, plot_td, ncol = 1)
+
+```
+
+
+# Read viewership data for NFL Superbowl through the years
+```{r Superbowl Viewership}
+views <- read.csv("Superbowl Views.csv")
+head(views)
+```
+
+# Lets now graph the viewership over time
+```{r Viewership Graph}
+# Install and load the ggplot2 package
+# install.packages("ggplot2")
+library(ggplot2)
+
+# Read the CSV file
+views <- read.csv("Superbowl Views.csv")
+
+# Create a time series plot
+ggplot(views, aes(x = Year, y = TV.Viewers..millions.)) +
+  geom_line() +
+  geom_point() +
+  labs(title = 'Superbowl Viewership Over Time',
+       x = 'Year',
+       y = 'TV Viewers (millions)') +
+  theme_minimal()
+
+```
+
+
+No surprise to see that viewership has gone up, I just wanted a baseline understanding of how many people the NFL is getting in front of at its peak. 
+
+Lets get into some discussion again:
+
+As we have seen with the data, the NFL has become a passing dominated league. With that being the case, the game has actually become longer while technically never actually changing the length of play-time. This is because the passing game allows the offense to stop the clock. In 1933, the NFL adopted a rule that allowed passing from anywhere behind the line of scrimmage, meaning that the pass could always be a fallback option for the quarterback in an option play. This meant a few things. The option became wildly more common, without having to commit fully to a pass, a quarterback could scramble for as long as possible and hope a receiver could lose his defender, buying more time fro the passing play itself. The other important point: incomplete passes stop the play clock. So now an offense had complete authority over the pace of play. This was not only key to an offense, but also the league making money. 
+
+The stopping of the play clock, not only gave offense more time in a game, but it extended the broadcast dramatically. This meant that the contracts the NFL signed with game coverage television became far more lucrative. With a longer broadcast the NFL had more advertising slots available for commercials. Today, the NFL generates 67% of its revenue from television, in 2022 the NFL generated $4.4 Billion in ad revenue, in no small part due to the extensive broadcast time of their games. 
+
+By enabling the passing game, the NFL increases its revenue, limits player injuries which were far more prevalent in the past, and empowers the offense to have higher scoring and more exciting games.
+
+Other rules, such as the defenseless player rule also enabled the passing game. 
+  Players in a defenseless posture are:
+      A player in the act of or just after throwing a pass (passing posture)
+      A receiver attempting to catch a pass who has not had time to clearly become a runner. If the player is capable of avoiding or warding off the impending contact of an opponent, he is no longer a defenseless player
+      The intended receiver of a pass in the action during and immediately following an interception or potential interception. If the player is capable of avoiding or warding off the impending contact of an opponent, he is no longer a defenseless player.
+
+  Note: Violations of this provision will be enforced after the interception, and the intercepting team will maintain possession.
+      A runner already in the grasp of a tackler and whose forward progress has been stopped
+      A kickoff or punt returner attempting to field a kick in the air
+      A player on the ground
+      A kicker/punter during the kick or during the return (Also see Article 6(h) for additional restrictions against a kicker/punter)
+      A quarterback at any time after a change of possession (Also see Article 9(f) for additional restrictions against a quarterback after a change of possession)
+      A player who receives a “blindside” block when the path of the offensive blocker is toward or parallel to his own end line.
+      A player who is protected from an illegal crackback block (see Article 2)
+      The offensive player who attempts a snap during a Field Goal attempt or a Try Kick
+      
+Prohibited contact against a player who is in a defenseless posture is:
+    forcibly hitting the defenseless player’s head or neck area with the helmet, facemask, forearm, or shoulder, even if the initial contact is lower than the player’s neck, and regardless of whether the defensive player also uses his arms to tackle the defenseless player by encircling or grasping him
+    lowering the head and making forcible contact with the crown or ”hairline” parts of the helmet against any part of the defenselessplayer’s body
+    illegally launching into a defenseless opponent. It is an illegal launch if a player (i) leaves both feet prior to contact to spring forward and upward into his opponent, and (ii) uses any part of his helmet to initiate forcible contact against any part of his opponent’s body. (This does not apply to contact against a runner, unless the runner is still considered to be a defenseless player, as defined in Article 7.)
+      
+Notice how many of these rules involve the quarterback or a receiver. Back in the day, even around my father's age of football these rules were not all present, meaning passing to the middle of the field was far more dangerous to the receivers, they could get blindsided easily and without repercussion. These rules further incentivized the passing game. The data backs up this assumption, as we can see the passing performance indicators are all higher than those of rushing. 
+While rushing is not as effective on the scoring side, it is still incredibly important to win a game. For any team, if one of their forms of offense is not at least a threat, the defense adjusts and the team does not stand to gain any offensive pressure in the game. 
+
+Running also became the offensive preference if you were in the lead, because it did not stop the clock. Teams that are winning games will "run the clock out," letting the clock slowly tick away as they stop prolonging the game with passing. It is for this reason that we never really see running decline, rather it is fairly constant throughout league history. 
+
+This brings me to an interesting point that a group of running backs pointed out in July of 2023. 
+https://deadspin.com/nick-chubb-on-rb-pay-theres-really-nothing-we-can-do-1850668575 
+
+TLDR here's an exact excerpt: "A group of top NFL running backs met via Zoom to discuss the salaries being paid at the position, and Cleveland Browns star Nick Chubb had a sobering message for his fellow running backs.
+
+"Right now, there's really nothing we can do," Chubb told ESPN on Sunday.
+
+"We're kind of handcuffed with the situation. We're the only position that our production hurts us the most," Chubb said, per ESPN. "If we go out there and run 2,000 yards with so many carries, the next year they're going to say, you're probably worn down. It's tough. ... It hurts us at the end of the day."
+
+Chubb confirmed to the outlet that he was among the players to take part in the videoconference on Saturday, which Pro Football Talk reported was the brainchild of Austin Ekeler of the Los Angeles Chargers. Chubb said Christian McCaffrey, Derrick Henry and Saquon Barkley were among the running backs who joined in.
+
+The average salary for an NFL running back is 1.76 million, which is about 1 million less than the average for a player on offense, according to Spotrac. The average salary for a left tackle is 8.95 million, by contrast.
+
+McCaffrey is playing on a four-year, $64 million contract extension signed with the Carolina Panthers -- the highest annual average pay at the position.
+
+"This is Criminal," McCaffrey tweeted about the contract situations facing Barkley, Jacobs and Pollard. "Three of the best PLAYERS in the entire league, regardless of position."
+
+Chubb agreed."
+
+The points that the running backs have brought up are important for the ethics of the league. These are players in a position that is vital to the teams they are on. They are all incredible players, however, they are looked at as a position that is on a lifespan, a short one at that. Franchises pay them according to their perceived shelf-life and due to this, a position with low shelf life cannot be paid as much according to those who cut the checks. The problems here are that you are not paid for the quality of the work you are providing nor the options you work opens up to the rest of the team, you are paid for the time you will last. Professional football players make millions, and I am sure someone somewhere is playing the worlds smallest violin for these players, however, the league makes billions, the franchises are now being faced with an ethical dilemma. How will they go about this situation. We have seen in the past that player strikes have lead to serious implications for the league, and if the players chose to band together over this issue we could see history repeat itself.
+
+As with any argument I feel compelled to bring up the other side for discussion purposes. Here I will talk about supply and demand. For instance, a quarterback is more difficult to implement into a team and relies on a good team around them more than a running back does. Without good receivers and a strong offensive line to by him some time, a quarterback will be very limited in his capacity to excel in the league. Whereas a running back is more applicable to a "plug in and play" mentality. meaning a good running back is more likely to be good despite the team around them than a quarterback or receiver. This leads to the franchises taking advantage of a larger market of usable running backs over the smaller market of usable receivers and quarterbacks. Yet, still I worry for the running backs and the imbalance that their work is compensated for by comparison to other positions. 
+
+Further research into this topic in terms of trends in pay and achievements is definitely warranted. I simply hope that this project has pointed out a potential issue for the league in the future and what it could mean in terms of repeating the past without learning from it.
+
+
